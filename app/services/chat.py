@@ -145,7 +145,8 @@ class ChatService:
     ):
         msgs: List[Dict[str, Any]] = []
         # Якорный системный промпт — всегда первым
-        msgs.append({"role": "system", "content": [{"type": "input_text", "text": system_prompt}]})
+        if system_prompt.strip():
+            msgs.append({"role": "system", "content": [{"type": "input_text", "text": system_prompt}]})
 
         # Если есть summary — добавляем вторым системным блоком
         if summary_text:
@@ -198,8 +199,12 @@ class ChatService:
         logger.debug(f"Built messages: {len(msgs)}")
 
         # 4) вызвали модель (по желанию можно включить store=True / previous_response_id)
+        prev_id = self.store.last_assistant_response_id(conv_id)  # уже есть хелпер
+        kwargs: Dict[str, Any] = {"store": True}
+        if prev_id is not None:
+            kwargs["previous_response_id"] = str(prev_id)
         try:
-            resp = self.client.create(msgs, store=True)
+            resp = self.client.create(msgs, **kwargs)
         except Exception:
             logger.exception("OpenAI call failed")
             raise

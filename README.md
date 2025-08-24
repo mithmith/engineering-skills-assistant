@@ -20,3 +20,19 @@ python -m app
 ```
 
 API base: http://127.0.0.1:8000/api
+
+## Telegram Bot
+
+Configure token in `.env`:
+
+```
+TELEGRAM_TOKEN=your_telegram_bot_token
+```
+
+Run the bot (in a separate process/terminal):
+
+```bash
+python -m app.telegram.bot
+```
+
+Commands: `/start`, `/newdialog`. Text messages continue the active dialog per user.

@@ -29,6 +29,7 @@ class Settings(BaseSettings):
 
     # Environment variables
     openai_api_key: str = ""
+    telegram_token: str = ""
 
     # Logging
     log_lvl: str = "INFO"

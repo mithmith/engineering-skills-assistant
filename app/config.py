@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     reload: bool = False
 
     # Model and paths
-    model_name: str = "gpt-5-mini"
+    model_name: str = "gpt-5"
     system_prompt_path: Path = Path("prompts/skills_assistant.md")
     conversations_dir: Path = Path("conversations")
 

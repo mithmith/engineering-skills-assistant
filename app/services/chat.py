@@ -167,10 +167,11 @@ class ChatService:
             window = window[-keep:]
 
         for m in window:
+            content_type = "input_text" if m.get("role") == "user" else "output_text"
             msgs.append(
                 {
                     "role": m["role"],
-                    "content": [{"type": "input_text", "text": str(m.get("content", ""))}],
+                    "content": [{"type": content_type, "text": str(m.get("content", ""))}],
                 }
             )
 

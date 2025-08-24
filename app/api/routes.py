@@ -22,7 +22,7 @@ def healthcheck():
 
 @router.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest, svc: ChatService = Depends(get_chat_service)):
-    logger.info("/chat called: conversation_id=%s", req.conversation_id)
+    logger.info(f"/chat called: conversation_id={req.conversation_id}")
     conv_id = str(req.conversation_id) if req.conversation_id else None
     try:
         result = svc.chat(user_text=req.user_text, conversation_id=conv_id)

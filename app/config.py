@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     # Environment variables
     openai_api_key: str = ""
     telegram_token: str = ""
+    telegram_proxy_url: str | None = None
+    telegram_connect_timeout_s: float = 15.0
+    telegram_read_timeout_s: float = 30.0
 
     # Logging
     log_lvl: str = "INFO"

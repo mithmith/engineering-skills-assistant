@@ -27,6 +27,10 @@ Configure token in `.env`:
 
 ```
 TELEGRAM_TOKEN=your_telegram_bot_token
+# Optional proxy (socks5/http) and custom timeouts
+# TELEGRAM_PROXY_URL=socks5://user:pass@host:port
+# TELEGRAM_CONNECT_TIMEOUT_S=15
+# TELEGRAM_READ_TIMEOUT_S=30
 ```
 
 Run the bot (in a separate process/terminal):

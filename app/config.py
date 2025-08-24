@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    __version__: str = "0.0.1"
+    __version__: str = "0.0.2"
 
     # Network settings
     host: str = "127.0.0.1"
@@ -16,27 +16,24 @@ class Settings(BaseSettings):
 
     # Model and paths
     model_name: str = "gpt-5-mini"
-    system_prompt_path: Path = Path("prompts/main_guide.md")
+    system_prompt_path: Path = Path("prompts/skill_assistant.md")
     conversations_dir: Path = Path("conversations")
 
-    # Other settings
-    max_history_messages: int | None = None
+    # History / context control
+    max_history_messages: int | None = None  # legacy fallback
+    summary_enabled: bool = True
+    summary_keep_last_messages: int = 12         # сколько «живых» реплик держать помимо summary
+    summary_update_every_n_turns: int = 6        # как часто пересвёртывать (по ходам ассистента)
+    summary_max_chars: int = 4000                # грубый лимит размера summary
+    summary_model_name: str | None = None        # по умолчанию = model_name
 
     # Environment variables
     openai_api_key: str = ""
-    yandex_geocoder_api_key: str = ""
-    ors_api_key: str = ""
 
     # Logging
     log_lvl: str = "INFO"
     log_path: Path = Path("logs/app.log")
 
-    # External services
-    yandex_geocoder_url: str = "https://geocode-maps.yandex.ru/v1"
-    ors_directions_url: str = "https://api.openrouteservice.org/v2/directions/driving-car/geojson"
-    rev_geocoder_concurrency: int = 4
-
-    # pydantic-settings configuration
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -47,7 +44,6 @@ class Settings(BaseSettings):
 def get_logger(log_path: Path, level: str):
     log.remove(0)
     log.add(sys.stderr, format="{time} | {level} | {message}", level=level)
-    # Ensure log directory exists
     try:
         log_path.parent.mkdir(parents=True, exist_ok=True)
     except Exception:
@@ -70,4 +66,3 @@ def get_settings() -> Settings:
 
 settings = get_settings()
 logger = get_logger(settings.log_path, settings.log_lvl)
-

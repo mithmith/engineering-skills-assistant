@@ -1,11 +1,16 @@
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
 class ConversationStore:
     """
     Простое файловое хранилище истории в формате JSONL (по одному файлу на диалог).
+    Поддерживает произвольные записи:
+      role: "user" | "assistant" | "system"
+      content: str
+      kind: Optional["summary" | "note" | ...]
+      любые доп. поля (ts, model, response_id, meta...)
     """
 
     def __init__(self, base_dir: Path):
@@ -26,3 +31,17 @@ class ConversationStore:
         p = self._path_for(conversation_id)
         with p.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    # --- helpers for summaries ---
+
+    def last_assistant_response_id(self, conversation_id: str) -> Optional[str]:
+        for rec in reversed(self.load(conversation_id)):
+            if rec.get("role") == "assistant" and rec.get("response_id"):
+                return str(rec["response_id"])
+        return None
+
+    def latest_summary(self, conversation_id: str) -> Optional[Dict[str, Any]]:
+        for rec in reversed(self.load(conversation_id)):
+            if rec.get("kind") == "summary":
+                return rec
+        return None

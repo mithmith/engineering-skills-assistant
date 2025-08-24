@@ -3,10 +3,10 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from app.config import logger, settings
 from app.integration.chatgpt import OpenAIClient
 from app.services.conversation_store import ConversationStore
 from app.utils.prompt_loader import PromptLoader
-from app.config import logger, settings
 
 
 def utcnow_iso() -> str:
@@ -31,7 +31,7 @@ _SUMMARY_INSTRUCTION = (
 
 class ChatService:
     """Сервис диалогов: строит сообщения, вызывает модель и логирует историю.
-       Добавлена свёртка контекста (summary) и скользящее окно последних реплик.
+    Добавлена свёртка контекста (summary) и скользящее окно последних реплик.
     """
 
     def __init__(
@@ -56,13 +56,16 @@ class ChatService:
         live = [m for m in history if m.get("role") in {"user", "assistant"}]
         if len(live) <= keep_last:
             return False
-        # пересвёртка каждые N ответов ассистента
-        last_summary_turn = 0
-        for i, m in enumerate(live, start=1):
-            if m.get("role") == "assistant" and m.get("kind") == "summary":
-                last_summary_turn = i
-        assistant_turns = sum(1 for m in live if m.get("role") == "assistant")
-        return (assistant_turns - last_summary_turn) >= turns_gap
+        # пересвёртка каждые N ответов ассистента после последней summary-записи
+        last_summary_idx = -1
+        for i, m in enumerate(history):
+            if m.get("kind") == "summary":
+                last_summary_idx = i
+        assistant_after = 0
+        for m in history[last_summary_idx + 1 :] if last_summary_idx >= 0 else history:
+            if m.get("role") == "assistant":
+                assistant_after += 1
+        return assistant_after >= turns_gap
 
     def _build_history_text(self, msgs: List[Dict[str, Any]]) -> str:
         # Превращаем сообщения в «плоский» текст для свёртки
@@ -108,7 +111,7 @@ class ChatService:
                 ],
                 model=self.summary_model,
             )
-            summary_text = (resp.output_text or "").strip()
+            summary_text = self._extract_text(resp)
             if not summary_text:
                 return None
 
@@ -163,11 +166,10 @@ class ChatService:
             window = window[-keep:]
 
         for m in window:
-            content_type = "input_text" if m["role"] == "user" else "output_text"
             msgs.append(
                 {
                     "role": m["role"],
-                    "content": [{"type": content_type, "text": str(m.get("content", ""))}],
+                    "content": [{"type": "input_text", "text": str(m.get("content", ""))}],
                 }
             )
 
@@ -202,7 +204,7 @@ class ChatService:
             logger.exception("OpenAI call failed")
             raise
 
-        assistant_text = resp.output_text
+        assistant_text = self._extract_text(resp)
         response_id = getattr(resp, "id", None)
         logger.info(f"OpenAI response id={response_id} (len={len(assistant_text or '')})")
 
@@ -234,3 +236,29 @@ class ChatService:
             assistant_text=assistant_text,
             response_id=response_id,
         )
+
+    # ---------- helpers ----------
+
+    @staticmethod
+    def _extract_text(resp: Any) -> str:
+        """Robustly extract text from Responses API response."""
+        try:
+            text = getattr(resp, "output_text", None)
+            if text:
+                return str(text).strip()
+        except Exception:
+            pass
+        # Fallback to outputs list structure if available
+        try:
+            outputs = getattr(resp, "output", None) or getattr(resp, "outputs", None)
+            if outputs and isinstance(outputs, list):
+                for item in outputs:
+                    content = getattr(item, "content", None) or item.get("content")
+                    if content and isinstance(content, list):
+                        for part in content:
+                            txt = getattr(part, "text", None) if hasattr(part, "text") else part.get("text")
+                            if txt:
+                                return str(txt).strip()
+        except Exception:
+            pass
+        return ""

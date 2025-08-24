@@ -16,16 +16,16 @@ class Settings(BaseSettings):
 
     # Model and paths
     model_name: str = "gpt-5-mini"
-    system_prompt_path: Path = Path("prompts/skill_assistant.md")
+    system_prompt_path: Path = Path("prompts/skills_assistant.md")
     conversations_dir: Path = Path("conversations")
 
     # History / context control
     max_history_messages: int | None = None  # legacy fallback
     summary_enabled: bool = True
-    summary_keep_last_messages: int = 12         # сколько «живых» реплик держать помимо summary
-    summary_update_every_n_turns: int = 6        # как часто пересвёртывать (по ходам ассистента)
-    summary_max_chars: int = 4000                # грубый лимит размера summary
-    summary_model_name: str | None = None        # по умолчанию = model_name
+    summary_keep_last_messages: int = 12  # сколько «живых» реплик держать помимо summary
+    summary_update_every_n_turns: int = 6  # как часто пересвёртывать (по ходам ассистента)
+    summary_max_chars: int = 4000  # грубый лимит размера summary
+    summary_model_name: str | None = None  # по умолчанию = model_name
 
     # Environment variables
     openai_api_key: str = ""

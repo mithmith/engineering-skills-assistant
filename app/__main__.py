@@ -1,4 +1,5 @@
 import uvicorn
+
 from app.config import settings
 
 # Позволяет запускать:  python -m app

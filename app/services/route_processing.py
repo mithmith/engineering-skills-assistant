@@ -4,10 +4,8 @@ from typing import Dict, List, Optional, Tuple
 from fastapi import HTTPException
 
 from app.api.schemas import OptionsIn, PointIn, StepOut, ViaLocality
-from app.integration.openrouteservice import ors_route
-from app.integration.yandex_geocoder import geocode_forward, geocode_reverse
-from app.utils.geo import round6, sample_points_along
 from app.config import logger
+from app.utils.geo import round6, sample_points_along
 
 
 def ors_extract_steps(

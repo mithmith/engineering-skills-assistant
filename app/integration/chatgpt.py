@@ -1,9 +1,11 @@
 """OpenAI client integration utilities."""
+
 from __future__ import annotations
 
 from typing import Any
 
 from openai import OpenAI
+
 from app.config import settings
 
 

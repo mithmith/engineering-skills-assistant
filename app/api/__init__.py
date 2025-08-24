@@ -1,8 +1,7 @@
 from fastapi import FastAPI
-from app.config import logger, settings
 
 from app.api.routes import router
-from app.config import settings
+from app.config import logger, settings
 from app.integration.chatgpt import OpenAIClient
 from app.integration.http_clients import close_http_clients
 from app.services.chat import ChatService

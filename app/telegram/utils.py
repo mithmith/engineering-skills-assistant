@@ -74,5 +74,3 @@ async def typing_pulse(chat_id: int, bot, stop_event: asyncio.Event, interval: f
                 pass
     except Exception:
         return
-
-

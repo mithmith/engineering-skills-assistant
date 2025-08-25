@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     telegram_proxy_url: str | None = None
     telegram_connect_timeout_s: float = 15.0
     telegram_read_timeout_s: float = 30.0
+    telegram_daily_message_limit: int = 10
 
     # Logging
     log_lvl: str = "INFO"

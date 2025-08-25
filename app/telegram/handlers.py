@@ -5,7 +5,7 @@ from typing import Callable
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from app.config import logger
+from app.config import logger, settings
 from app.services.chat import ChatService
 from app.telegram.registry import TelegramRegistry
 from app.telegram.utils import chunk_message, typing_pulse
@@ -19,12 +19,23 @@ class TelegramHandlers:
 
     async def start(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
+        # update profile fields
+        self.registry.update_profile(
+            user_id,
+            full_name=update.effective_user.full_name,
+            username=update.effective_user.username,
+        )
         conv_id = self.registry.get_or_create_active_conversation(user_id, new_conv_id_factory=self.new_conv_id_factory)
         await ctx.bot.send_message(update.effective_chat.id, "Привет! Готов помогать. Команды: /newdialog, /help")
         logger.info(f"/start user_id={user_id} conversation_id={conv_id}")
 
     async def newdialog(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id
+        self.registry.update_profile(
+            user_id,
+            full_name=update.effective_user.full_name,
+            username=update.effective_user.username,
+        )
         conv_id = self.registry.start_new_conversation(user_id, new_conv_id_factory=self.new_conv_id_factory)
         await ctx.bot.send_message(
             update.effective_chat.id,
@@ -36,7 +47,20 @@ class TelegramHandlers:
         if not update.message or not update.message.text:
             return
         user_id = update.effective_user.id
+        self.registry.update_profile(
+            user_id,
+            full_name=update.effective_user.full_name,
+            username=update.effective_user.username,
+        )
         conv_id = self.registry.get_or_create_active_conversation(user_id, new_conv_id_factory=self.new_conv_id_factory)
+
+        # rate-limit per user
+        if not self.registry.can_consume_message(user_id, settings.telegram_daily_message_limit):
+            await ctx.bot.send_message(
+                update.effective_chat.id,
+                f"Дневной лимит сообщений исчерпан (до {settings.telegram_daily_message_limit} в сутки). Попробуем завтра.",
+            )
+            return
 
         if self.registry.in_flight(user_id):
             await ctx.bot.send_message(
@@ -52,6 +76,8 @@ class TelegramHandlers:
         pulse = asyncio.create_task(typing_pulse(update.effective_chat.id, ctx.bot, stop))
 
         try:
+            # record usage before processing to deter abuse; safe even if fails later
+            self.registry.consume_message(user_id)
             result = await asyncio.to_thread(self.chat_service.chat, update.message.text, conv_id)
             stop.set()
             with contextlib.suppress(Exception):
@@ -71,5 +97,3 @@ class TelegramHandlers:
                 await ctx.bot.delete_message(update.effective_chat.id, status_msg.message_id)
         finally:
             self.registry.clear_status(user_id)
-
-

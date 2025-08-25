@@ -1,6 +1,6 @@
 import json
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -58,6 +58,36 @@ class TelegramRegistry:
         mid = entry.get("status_message_id")
         return int(mid) if mid is not None else None
 
+    # ---------- profile ----------
+    def update_profile(self, user_id: int, full_name: Optional[str], username: Optional[str]) -> None:
+        profile_url = None
+        if username:
+            profile_url = f"https://t.me/{username}"
+        self._update(user_id, full_name=full_name or None, username=username or None, profile_url=profile_url)
+
+    # ---------- limits ----------
+    def can_consume_message(self, user_id: int, limit_per_day: int) -> bool:
+        data = self._read()
+        entry = data.get(str(user_id)) or {}
+        today = time.strftime("%Y-%m-%d", time.gmtime())
+        used = 0
+        used_map = entry.get("daily_usage") or {}
+        if isinstance(used_map, dict):
+            used = int(used_map.get(today) or 0)
+        return used < int(limit_per_day)
+
+    def consume_message(self, user_id: int) -> None:
+        data = self._read()
+        entry = data.get(str(user_id)) or {}
+        today = time.strftime("%Y-%m-%d", time.gmtime())
+        used_map = entry.get("daily_usage") or {}
+        if not isinstance(used_map, dict):
+            used_map = {}
+        used_map[today] = int(used_map.get(today) or 0) + 1
+        entry["daily_usage"] = used_map
+        data[str(user_id)] = entry
+        self._write(data)
+
     # --------- internals ---------
     def _update(
         self,
@@ -66,6 +96,9 @@ class TelegramRegistry:
         conversation_id: Optional[str] = None,
         status_message_id: Optional[int] = None,
         in_flight: Optional[bool] = None,
+        full_name: Optional[str] = None,
+        username: Optional[str] = None,
+        profile_url: Optional[str] = None,
     ) -> None:
         data = self._read()
         entry: Dict[str, object] = data.get(str(user_id)) or {}
@@ -75,6 +108,12 @@ class TelegramRegistry:
             entry["status_message_id"] = status_message_id
         if in_flight is not None:
             entry["in_flight"] = bool(in_flight)
+        if full_name is not None:
+            entry["full_name"] = str(full_name)
+        if username is not None:
+            entry["username"] = str(username)
+        if profile_url is not None:
+            entry["profile_url"] = str(profile_url)
         entry["telegram_user_id"] = int(user_id)
         entry["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         data[str(user_id)] = entry
@@ -105,5 +144,3 @@ class TelegramRegistry:
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(self.path)
-
-

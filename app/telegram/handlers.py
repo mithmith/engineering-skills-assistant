@@ -8,7 +8,7 @@ from telegram.ext import ContextTypes
 from app.config import logger, settings
 from app.services.chat import ChatService
 from app.telegram.registry import TelegramRegistry
-from app.telegram.utils import chunk_message, typing_pulse
+from app.telegram.utils import chunk_message, typing_pulse, escape_markdown
 
 
 class TelegramHandlers:
@@ -18,6 +18,8 @@ class TelegramHandlers:
         self.new_conv_id_factory = new_conv_id_factory
 
     async def start(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        if not update.effective_user or not update.effective_chat:
+            return
         user_id = update.effective_user.id
         # update profile fields
         self.registry.update_profile(
@@ -30,6 +32,8 @@ class TelegramHandlers:
         logger.info(f"/start user_id={user_id} conversation_id={conv_id}")
 
     async def newdialog(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        if not update.effective_user or not update.effective_chat:
+            return
         user_id = update.effective_user.id
         self.registry.update_profile(
             user_id,
@@ -43,8 +47,55 @@ class TelegramHandlers:
         )
         logger.info(f"/newdialog user_id={user_id} conversation_id={conv_id}")
 
+    async def help(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        if not update.effective_user or not update.effective_chat:
+            return
+        user_id = update.effective_user.id
+        self.registry.update_profile(
+            user_id,
+            full_name=update.effective_user.full_name,
+            username=update.effective_user.username,
+        )
+        parts = []
+        parts.append(escape_markdown("*Как спрашивать, чтобы было полезнее?* 🤝"))
+        parts.append(escape_markdown("\n— Коротко опиши цель: что хочешь получить в итоге."))
+        parts.append(escape_markdown("— Дай контекст: платформа, язык, версия, ограничения по времени/ресурсам."))
+        parts.append(escape_markdown("— Покажи пример входных данных или текущий код (если есть)."))
+        parts.append(escape_markdown("— Скажи, какой формат ответа удобнее: шаги, код, чеклист и т. п."))
+        parts.append(escape_markdown("\n*Минимальный шаблон промпта:*"))
+        code = (
+            "```\n"
+            "Цель: …\n"
+            "Контекст: … (язык/версия/платформа)\n"
+            "Данные/код: …\n"
+            "Формат ответа: … (коротко/пошагово/пример кода)\n"
+            "```"
+        )
+        parts.append(code)
+        parts.append(escape_markdown("\n*Примеры:*"))
+        ex1 = (
+            "```\n"
+            "Цель: отладить схему драйвера MOSFET.\n"
+            "Контекст: STM32, 12 В, N-MOSFET, PWM 20 кГц.\n"
+            "Данные/код: фрагмент схемы (gate/driver/Rg/диод), осциллограммы, симптомы (перегрев, звон).\n"
+            "Формат ответа: список проверок, расчёт Rg/Cgate, рекомендации по разводке.\n"
+            "```"
+        )
+        ex2 = (
+            "```\n"
+            "Цель: оценить прогиб консольного бруса в CAE.\n"
+            "Контекст: FreeCAD + CalculiX, Al 6061-T6, нагрузка 150 Н на конце, L=200 мм, сечение 20x5 мм.\n"
+            "Формат ответа: пошагово — КУ/сетку/материал, и проверка аналитикой (δ = F*L^3/(3*E*I)).\n"
+            "```"
+        )
+        parts.append(ex1)
+        parts.append(ex2)
+        parts.append(escape_markdown("Если что — пингуй, разберёмся вместе ✨"))
+        text = "\n".join(parts)
+        await ctx.bot.send_message(update.effective_chat.id, text, parse_mode="MarkdownV2")
+
     async def text_message(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-        if not update.message or not update.message.text:
+        if not update.message or not update.message.text or not update.effective_user or not update.effective_chat:
             return
         user_id = update.effective_user.id
         self.registry.update_profile(

@@ -1,7 +1,7 @@
 import asyncio
+import base64
 import re
 from typing import List, Tuple
-import base64
 
 
 def chunk_message(text: str, limit: int = 4096) -> List[str]:

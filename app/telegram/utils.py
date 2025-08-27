@@ -59,9 +59,12 @@ def chunk_message(text: str, limit: int = 4096) -> List[str]:
 
 
 def escape_markdown(text: str) -> str:
-    # minimal escaping for Telegram MarkdownV2
+    """Escape Telegram MarkdownV2 special characters in plain text.
+    Uses a callable replacer to insert a single backslash before each special.
+    """
     specials = r"_[]()~`>#+-=|{}.!"
-    return re.sub(f"([\\{specials}])", r"\\\\\\1", text)
+    pattern = re.compile(f"([\\{specials}])")
+    return pattern.sub(lambda m: "\\" + m.group(1), text)
 
 
 async def typing_pulse(chat_id: int, bot, stop_event: asyncio.Event, interval: float = 3.0) -> None:

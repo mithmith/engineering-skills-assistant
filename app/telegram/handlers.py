@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
-from typing import Callable
+from typing import Any, Callable, Dict
+import uuid
 
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -8,7 +9,7 @@ from telegram.ext import ContextTypes
 from app.config import logger, settings
 from app.services.chat import ChatService
 from app.telegram.registry import TelegramRegistry
-from app.telegram.utils import chunk_message, typing_pulse, escape_markdown
+from app.telegram.utils import chunk_message, typing_pulse, escape_markdown, download_photo_as_data_url
 
 
 class TelegramHandlers:
@@ -96,7 +97,7 @@ class TelegramHandlers:
         await ctx.bot.send_message(update.effective_chat.id, text, parse_mode="MarkdownV2")
 
     async def text_message(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-        if not update.message or not update.message.text or not update.effective_user or not update.effective_chat:
+        if not update.message or not update.effective_user or not update.effective_chat:
             return
         user_id = update.effective_user.id
         self.registry.update_profile(
@@ -130,7 +131,75 @@ class TelegramHandlers:
         try:
             # record usage before processing to deter abuse; safe even if fails later
             self.registry.consume_message(user_id)
-            result = await asyncio.to_thread(self.chat_service.chat, update.message.text, conv_id)
+            user_text = update.message.text or ""
+            # If a photo is attached, prefer the largest size
+            image_part = None
+            if update.message.photo:
+                photo_sizes = update.message.photo
+                largest = max(photo_sizes, key=lambda p: p.width * p.height)
+                data_url, _ = await download_photo_as_data_url(largest.file_id, ctx.bot)
+                image_part = {"type": "input_image", "image_url": data_url}
+
+            if image_part:
+                # Build full-context messages using ChatService internals (system + summary + window)
+                system_prompt = self.chat_service.prompt_loader.load()
+                history = self.chat_service.store.load(conv_id)
+                summary_text = None
+                if settings.summary_enabled:
+                    summary_text = self.chat_service._summarize(conv_id, history)
+                msgs = self.chat_service._build_messages(system_prompt, summary_text, history, user_text or "")
+                # Replace the last user message with multimodal content (image + optional caption)
+                if msgs and msgs[-1].get("role") == "user":
+                    msgs[-1] = {
+                        "role": "user",
+                        "content": [image_part]
+                        + ([{"type": "input_text", "text": user_text}] if user_text else []),
+                    }
+                prev_id = self.chat_service.store.last_assistant_response_id(conv_id)
+                kwargs: Dict[str, Any] = {"store": True}
+                if prev_id is not None:
+                    kwargs["previous_response_id"] = str(prev_id)
+                # Call OpenAI with full context
+                resp = await asyncio.to_thread(self.chat_service.client.create, msgs, **kwargs)
+                assistant_text = self.chat_service._extract_text(resp)
+                response_id = getattr(resp, "id", None)
+
+                # Log and store records with masked image marker
+                caption = (user_text or "").strip().replace("\n", " ")
+                logger.info(
+                    f"Telegram multimodal: conversation_id={conv_id} response_id={response_id} caption=\"{caption}\" [IMAGE]"
+                )
+                from datetime import datetime, timezone
+                iso = datetime.now(timezone.utc).isoformat()
+                user_record = {
+                    "id": str(uuid.uuid4()),
+                    "conversation_id": conv_id,
+                    "role": "user",
+                    "content": ((user_text or "").strip() + ("\n[IMAGE]" if image_part else "")).strip(),
+                    "ts": iso,
+                    "model": None,
+                    "response_id": None,
+                }
+                self.chat_service.store.append(conv_id, user_record)
+                assistant_record = {
+                    "id": str(uuid.uuid4()),
+                    "conversation_id": conv_id,
+                    "role": "assistant",
+                    "content": assistant_text,
+                    "ts": iso,
+                    "model": self.chat_service.model_name,
+                    "response_id": response_id,
+                }
+                self.chat_service.store.append(conv_id, assistant_record)
+                # Wrap minimal result
+                class _R:
+                    def __init__(self, conv_id, text, rid):
+                        self.conversation_id = conv_id
+                        self.assistant_text = text
+                        self.response_id = rid
+                result = _R(conv_id, assistant_text, response_id)
+            else:
+                result = await asyncio.to_thread(self.chat_service.chat, user_text, conv_id)
             stop.set()
             with contextlib.suppress(Exception):
                 await ctx.bot.delete_message(update.effective_chat.id, status_msg.message_id)

@@ -23,6 +23,8 @@ class OpenAIClient:
         Thin wrapper over Responses API with passthrough kwargs, e.g.:
           - store=True
           - previous_response_id="..."
+        Accepts multimodal content parts in input_data, including
+        {"type": "input_image", "image_url": {"url": "data:..."}}.
         """
         model = kwargs.pop("model", self.model_name)
         return self._client.responses.create(

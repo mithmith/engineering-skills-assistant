@@ -1,6 +1,7 @@
 import asyncio
 import re
-from typing import List
+from typing import List, Tuple
+import base64
 
 
 def chunk_message(text: str, limit: int = 4096) -> List[str]:
@@ -77,3 +78,18 @@ async def typing_pulse(chat_id: int, bot, stop_event: asyncio.Event, interval: f
                 pass
     except Exception:
         return
+
+
+async def download_photo_as_data_url(file_id: str, bot) -> Tuple[str, int]:
+    """Download a Telegram photo file by id and return (data_url, size_bytes)."""
+    f = await bot.get_file(file_id)
+    b = await f.download_as_bytearray()
+    # Telegram JPEG/WebP/PNG are typical; try inferring from file path
+    path = getattr(f, "file_path", "") or ""
+    mime = "image/jpeg"
+    if path.endswith(".png"):
+        mime = "image/png"
+    elif path.endswith(".webp"):
+        mime = "image/webp"
+    data_url = f"data:{mime};base64,{base64.b64encode(bytes(b)).decode('ascii')}"
+    return data_url, len(b)

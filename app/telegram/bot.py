@@ -58,7 +58,7 @@ def run_polling() -> None:
     application.add_handler(CommandHandler("start", handlers.start))
     application.add_handler(CommandHandler("help", handlers.help))
     application.add_handler(CommandHandler("newdialog", handlers.newdialog))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.text_message))
+    application.add_handler(MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND, handlers.text_message))
 
     logger.info("Starting Telegram polling bot")
     application.run_polling()

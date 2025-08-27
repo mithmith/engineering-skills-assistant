@@ -22,7 +22,13 @@ class RegistryEntry:
 class TelegramRegistry:
     def __init__(self, path: Path):
         self.path = path
+        self.lock_path = self.path.with_suffix(".lock")
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            # ensure lock file exists
+            self.lock_path.touch(exist_ok=True)
+        except Exception:
+            pass
         if not self.path.exists():
             self._write({})
 
@@ -121,13 +127,13 @@ class TelegramRegistry:
 
     def _read(self) -> Dict[str, Dict[str, object]]:
         if portalocker:
-            with portalocker.Lock(str(self.path), "r", timeout=5):
+            with portalocker.Lock(str(self.lock_path), "a", timeout=5):
                 return self._read_nolock()
         return self._read_nolock()
 
     def _write(self, data: Dict[str, Dict[str, object]]) -> None:
         if portalocker:
-            with portalocker.Lock(str(self.path), "w", timeout=5):
+            with portalocker.Lock(str(self.lock_path), "a", timeout=5):
                 self._write_nolock(data)
                 return
         self._write_nolock(data)
@@ -143,4 +149,12 @@ class TelegramRegistry:
     def _write_nolock(self, data: Dict[str, Dict[str, object]]) -> None:
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        # On Windows, replace can fail transiently; retry a few times
+        for _ in range(5):
+            try:
+                tmp.replace(self.path)
+                return
+            except PermissionError:
+                time.sleep(0.05)
+        # last attempt or re-raise
         tmp.replace(self.path)

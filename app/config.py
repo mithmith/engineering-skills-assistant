@@ -48,14 +48,15 @@ class Settings(BaseSettings):
 @lru_cache()
 def get_logger(log_path: Path, level: str):
     log.remove(0)
-    log.add(sys.stderr, format="{time} | {level} | {message}", level=level)
+    # Time format: seconds with hundredths, no timezone
+    log.add(sys.stderr, format="{time:YYYY-MM-DD HH:mm:ss.SS} | {level} | {message}", level=level)
     try:
         log_path.parent.mkdir(parents=True, exist_ok=True)
     except Exception:
         pass
     log.add(
         log_path,
-        format="{time} | {level} | {message}",
+        format="{time:YYYY-MM-DD HH:mm:ss.SS} | {level} | {message}",
         level="DEBUG",
         rotation="1 days",
         retention="30 days",

@@ -3,7 +3,6 @@ from fastapi import FastAPI
 from app.api.routes import router
 from app.config import logger, settings
 from app.integration.chatgpt import OpenAIClient
-from app.integration.http_clients import close_http_clients
 from app.services.chat import ChatService
 from app.services.conversation_store import ConversationStore
 from app.utils.prompt_loader import PromptLoader
@@ -35,7 +34,6 @@ def create_app() -> FastAPI:
         logger.info("ChatService initialized")
 
     app.include_router(router, prefix="/api")
-    app.add_event_handler("shutdown", close_http_clients)
     logger.info("Router mounted at /api and shutdown handler registered")
     return app
 

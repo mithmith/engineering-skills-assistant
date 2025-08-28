@@ -119,37 +119,43 @@ class TelegramHandlers:
             )
             return
 
-        if self.registry.in_flight(user_id):
+        # Try to acquire per-user in_flight flag atomically to avoid races
+        if not self.registry.begin_in_flight(user_id):
             await ctx.bot.send_message(
                 update.effective_chat.id,
                 "Я ещё думаю над прошлым вопросом — сейчас отвечу и продолжим.",
             )
             return
 
-        status_msg = await ctx.bot.send_message(update.effective_chat.id, "⏳ думаю над ответом…")
-        self.registry.set_status(user_id, status_msg.message_id, in_flight=True)
+        try:
+            status_msg = await ctx.bot.send_message(update.effective_chat.id, "⏳ думаю над ответом…")
+            self.registry.set_status(user_id, status_msg.message_id, in_flight=True)
 
-        # ensure worker is running
-        if not self._worker_task or self._worker_task.done():
-            self._worker_task = asyncio.create_task(self._worker(ctx))
+            # ensure worker is running
+            if not self._worker_task or self._worker_task.done():
+                self._worker_task = asyncio.create_task(self._worker(ctx))
 
-        # record usage before processing to deter abuse
-        self.registry.consume_message(user_id)
+            # record usage before processing to deter abuse
+            self.registry.consume_message(user_id)
 
-        # Prepare job payload (prefer largest photo if present)
-        photo_id = None
-        if update.message.photo:
-            largest = max(update.message.photo, key=lambda p: p.width * p.height)
-            photo_id = largest.file_id
-        job = {
-            "chat_id": update.effective_chat.id,
-            "user_id": user_id,
-            "conversation_id": conv_id,
-            "text": update.message.text or "",
-            "photo_id": photo_id,
-            "status_message_id": status_msg.message_id,
-        }
-        await self._queue.put(job)
+            # Prepare job payload (prefer largest photo if present)
+            photo_id = None
+            if update.message.photo:
+                largest = max(update.message.photo, key=lambda p: p.width * p.height)
+                photo_id = largest.file_id
+            job = {
+                "chat_id": update.effective_chat.id,
+                "user_id": user_id,
+                "conversation_id": conv_id,
+                "text": update.message.text or "",
+                "photo_id": photo_id,
+                "status_message_id": status_msg.message_id,
+            }
+            await self._queue.put(job)
+        except Exception:
+            logger.exception("enqueue failed")
+            self.registry.clear_status(user_id)
+            return
         # return immediately; worker will process and reply
 
     async def _worker(self, ctx: ContextTypes.DEFAULT_TYPE):
@@ -202,6 +208,7 @@ class TelegramHandlers:
                     f'Telegram multimodal: conversation_id={conv_id} response_id={response_id} caption="{caption}" [IMAGE]'
                 )
                 from datetime import datetime, timezone
+
                 iso = datetime.now(timezone.utc).isoformat()
                 user_record = {
                     "id": str(uuid.uuid4()),

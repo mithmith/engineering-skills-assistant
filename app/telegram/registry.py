@@ -2,7 +2,7 @@ import json
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 try:
     import portalocker  # type: ignore
@@ -53,16 +53,44 @@ class TelegramRegistry:
     def clear_status(self, user_id: int) -> None:
         self._update(user_id, status_message_id=None, in_flight=False)
 
-    def in_flight(self, user_id: int) -> bool:
-        data = self._read()
-        entry = data.get(str(user_id)) or {}
-        return bool(entry.get("in_flight"))
+    # Removed non-atomic in_flight() check to avoid race conditions; use begin_in_flight()
 
     def status_message_id(self, user_id: int) -> Optional[int]:
         data = self._read()
-        entry = data.get(str(user_id)) or {}
-        mid = entry.get("status_message_id")
-        return int(mid) if mid is not None else None
+        entry: Dict[str, Any] = data.get(str(user_id)) or {}
+        mid: Any = entry.get("status_message_id")
+        if isinstance(mid, int):
+            return mid
+        try:
+            return int(str(mid)) if mid is not None else None
+        except Exception:
+            return None
+
+    def begin_in_flight(self, user_id: int) -> bool:
+        """Atomically set in_flight to True if not already set. Returns True on success, False if already in flight."""
+        if portalocker:
+            with portalocker.Lock(str(self.lock_path), "a", timeout=5):
+                data2: Dict[str, Dict[str, Any]] = self._read_nolock()
+                entry2: Dict[str, Any] = data2.get(str(user_id)) or {}
+                if bool(entry2.get("in_flight")):
+                    return False
+                entry2["in_flight"] = True
+                entry2["telegram_user_id"] = int(user_id)
+                entry2["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                data2[str(user_id)] = entry2
+                self._write_nolock(data2)
+                return True
+        # Fallback without portalocker
+        data3: Dict[str, Dict[str, Any]] = self._read_nolock()
+        entry3: Dict[str, Any] = data3.get(str(user_id)) or {}
+        if bool(entry3.get("in_flight")):
+            return False
+        entry3["in_flight"] = True
+        entry3["telegram_user_id"] = int(user_id)
+        entry3["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        data3[str(user_id)] = entry3
+        self._write_nolock(data3)
+        return True
 
     # ---------- profile ----------
     def update_profile(self, user_id: int, full_name: Optional[str], username: Optional[str]) -> None:
@@ -83,7 +111,20 @@ class TelegramRegistry:
         return used < int(limit_per_day)
 
     def consume_message(self, user_id: int) -> None:
-        data = self._read()
+        if portalocker:
+            with portalocker.Lock(str(self.lock_path), "a", timeout=5):
+                data = self._read_nolock()
+                entry = data.get(str(user_id)) or {}
+                today = time.strftime("%Y-%m-%d", time.gmtime())
+                used_map = entry.get("daily_usage") or {}
+                if not isinstance(used_map, dict):
+                    used_map = {}
+                used_map[today] = int(used_map.get(today) or 0) + 1
+                entry["daily_usage"] = used_map
+                data[str(user_id)] = entry
+                self._write_nolock(data)
+                return
+        data = self._read_nolock()
         entry = data.get(str(user_id)) or {}
         today = time.strftime("%Y-%m-%d", time.gmtime())
         used_map = entry.get("daily_usage") or {}
@@ -92,7 +133,7 @@ class TelegramRegistry:
         used_map[today] = int(used_map.get(today) or 0) + 1
         entry["daily_usage"] = used_map
         data[str(user_id)] = entry
-        self._write(data)
+        self._write_nolock(data)
 
     # --------- internals ---------
     def _update(
@@ -106,39 +147,60 @@ class TelegramRegistry:
         username: Optional[str] = None,
         profile_url: Optional[str] = None,
     ) -> None:
-        data = self._read()
-        entry: Dict[str, object] = data.get(str(user_id)) or {}
+        if portalocker:
+            with portalocker.Lock(str(self.lock_path), "a", timeout=5):
+                data4: Dict[str, Dict[str, Any]] = self._read_nolock()
+                entry4: Dict[str, Any] = data4.get(str(user_id)) or {}
+                if conversation_id is not None:
+                    entry4["conversation_id"] = conversation_id
+                if status_message_id is not None or (status_message_id is None and "status_message_id" in entry4):
+                    entry4["status_message_id"] = status_message_id
+                if in_flight is not None:
+                    entry4["in_flight"] = bool(in_flight)
+                if full_name is not None:
+                    entry4["full_name"] = str(full_name)
+                if username is not None:
+                    entry4["username"] = str(username)
+                if profile_url is not None:
+                    entry4["profile_url"] = str(profile_url)
+                entry4["telegram_user_id"] = int(user_id)
+                entry4["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                data4[str(user_id)] = entry4
+                self._write_nolock(data4)
+                return
+        data: Dict[str, Dict[str, Any]] = self._read_nolock()
+        entry2: Dict[str, Any] = data.get(str(user_id)) or {}
         if conversation_id is not None:
-            entry["conversation_id"] = conversation_id
-        if status_message_id is not None or (status_message_id is None and "status_message_id" in entry):
-            entry["status_message_id"] = status_message_id
+            entry2["conversation_id"] = conversation_id
+        if status_message_id is not None or (status_message_id is None and "status_message_id" in entry2):
+            entry2["status_message_id"] = status_message_id
         if in_flight is not None:
-            entry["in_flight"] = bool(in_flight)
+            entry2["in_flight"] = bool(in_flight)
         if full_name is not None:
-            entry["full_name"] = str(full_name)
+            entry2["full_name"] = str(full_name)
         if username is not None:
-            entry["username"] = str(username)
+            entry2["username"] = str(username)
         if profile_url is not None:
-            entry["profile_url"] = str(profile_url)
-        entry["telegram_user_id"] = int(user_id)
-        entry["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        data[str(user_id)] = entry
-        self._write(data)
+            entry2["profile_url"] = str(profile_url)
+        entry2["telegram_user_id"] = int(user_id)
+        entry2["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        data[str(user_id)] = entry2
+        self._write_nolock(data)
 
-    def _read(self) -> Dict[str, Dict[str, object]]:
+    def _read(self) -> Dict[str, Dict[str, Any]]:
         if portalocker:
             with portalocker.Lock(str(self.lock_path), "a", timeout=5):
                 return self._read_nolock()
         return self._read_nolock()
 
-    def _write(self, data: Dict[str, Dict[str, object]]) -> None:
+    def _write(self, data: Dict[str, Dict[str, Any]]) -> None:
         if portalocker:
             with portalocker.Lock(str(self.lock_path), "a", timeout=5):
                 self._write_nolock(data)
                 return
         self._write_nolock(data)
 
-    def _read_nolock(self) -> Dict[str, Dict[str, object]]:
+    def _read_nolock(self) -> Dict[str, Dict[str, Any]]:
         if not self.path.exists():
             return {}
         try:
@@ -146,7 +208,7 @@ class TelegramRegistry:
         except Exception:
             return {}
 
-    def _write_nolock(self, data: Dict[str, Dict[str, object]]) -> None:
+    def _write_nolock(self, data: Dict[str, Dict[str, Any]]) -> None:
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         # On Windows, replace can fail transiently; retry a few times

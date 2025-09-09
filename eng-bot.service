@@ -1,0 +1,23 @@
+[Unit]
+Description=Engineering Skills Bot via proxychains (python venv)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=localserver
+WorkingDirectory=/home/localserver/engineering_skills_bot
+# ВАЖНО: proxychains v3 читает конфиг из ~/.proxychains/proxychains.conf или /etc/proxychains.conf
+ExecStart=/usr/bin/proxychains /home/localserver/engineering_skills_bot/.venv/bin/python -m app.telegram.bot
+
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+LimitNOFILE=65536
+
+# Корректное завершение по SIGTERM
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

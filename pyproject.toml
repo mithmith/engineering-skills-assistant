@@ -5,3 +5,29 @@ line-length = 120
 profile = "black"
 line_length = 120
 
+
+[project]
+name = "engineering-skills-bot"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Vladimir Ivanov",email = "vladimir.s.ivanoff@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "python-telegram-bot (>=21.4,<22.0)",
+    "requests (>=2.32.5,<3.0.0)",
+    "pydantic (>=2.7.0,<2.8.0)",
+    "fastapi (>=0.111.0,<0.112.0)",
+    "uvicorn[standard] (>=0.29.0,<0.30.0)",
+    "httpx (>=0.27.0,<0.28.0)",
+    "pydantic-settings (>=2.2.0,<2.3.0)",
+    "openai (>=1.0.0,<2.0.0)",
+    "loguru (>=0.7.0,<0.8.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
